@@ -4,6 +4,8 @@ using RestaurantApi.Data;
 using RestaurantApi.Models;
 using Microsoft.Extensions.Caching.Distributed;
 using System.Text.Json;
+using RestaurantApi.Services;
+using Serilog;
 
 namespace RestaurantApi.Controllers;
 
@@ -14,106 +16,70 @@ public class OrdersController : ControllerBase
     private readonly AppDbContext _context;
     private readonly IDistributedCache _cache;
 
-    public OrdersController(AppDbContext context, IDistributedCache cache)
+    private readonly OrderService _orderService;
+
+    public OrdersController(AppDbContext context, IDistributedCache cache, OrderService orderService)
     {
         _context = context;
         _cache = cache;
+        _orderService = orderService;
     }
 
     // 1️⃣ Listar todas las órdenes (excepto delivered)
     [HttpGet]
     public async Task<IActionResult> GetOrders()
     {
-        const string cacheKey = "orders:list";
-        string? cached = await _cache.GetStringAsync(cacheKey);
+        Log.Information("GET /orders called");
 
-        if (cached != null)
-            return Ok(JsonSerializer.Deserialize<List<Order>>(cached));
-
-        var orders = await _context.Orders
-            .Include(o => o.Items)
-            .Where(o => o.Status != "delivered")
-            .ToListAsync();
-
-        await _cache.SetStringAsync(
-            cacheKey,
-            JsonSerializer.Serialize(orders),
-            new DistributedCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30)
-            }
-        );
-
+        var orders = await _orderService.GetAllActiveOrdersAsync();
         return Ok(orders);
     }
 
     // 2️⃣ Crear una nueva orden
     [HttpPost]
     public async Task<IActionResult> CreateOrder([FromBody] Order order)
-  {
-        order.Status = "initiated";
-        _context.Orders.Add(order);
-        await _context.SaveChangesAsync();
+    {
+        Log.Information("POST /orders called with payload: {@Order}", order);
 
-        // Invalida la caché de la lista
-        await _cache.RemoveAsync("orders:list");
+        if (!ModelState.IsValid)
+        {
+            Log.Warning("Invalid order data received");
+            return BadRequest(ModelState);
+        }
 
-        return CreatedAtAction(nameof(GetOrderById), new { id = order.Id }, order);
+        var createdOrder = await _orderService.CreateOrderAsync(order);
+        return CreatedAtAction(nameof(GetOrderById), new { id = createdOrder.Id }, createdOrder);
     }
 
     // 3️⃣ Avanzar el estado de una orden
     [HttpPost("{id}/advance")]
     public async Task<IActionResult> AdvanceOrder(int id)
     {
-        var order = await _context.Orders.Include(o => o.Items).FirstOrDefaultAsync(o => o.Id == id);
+        Log.Information("POST /orders/{Id}/advance called", id);
+
+        var order = await _orderService.AdvanceOrderStatusAsync(id);
         if (order == null)
+        {
+            Log.Warning("Order with ID {Id} not found", id);
             return NotFound();
-
-        order.Status = order.Status switch
-        {
-            "initiated" => "sent",
-            "sent" => "delivered",
-            _ => order.Status
-        };
-
-        if (order.Status == "delivered")
-        {
-            _context.Orders.Remove(order);
-            await _cache.RemoveAsync($"order:{id}");
         }
-
-        await _context.SaveChangesAsync();
-        await _cache.RemoveAsync("orders:list");
 
         return Ok(order);
     }
 
     // 4️⃣ Ver detalle de una orden
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetOrderById(int id)
-    {
-        string cacheKey = $"order:{id}";
-        string? cached = await _cache.GetStringAsync(cacheKey);
+        public async Task<IActionResult> GetOrderById(int id)
+        {
+            Log.Information("GET /orders/{Id} called", id);
 
-        if (cached != null)
-            return Ok(JsonSerializer.Deserialize<Order>(cached));
-
-        var order = await _context.Orders
-            .Include(o => o.Items)
-            .FirstOrDefaultAsync(o => o.Id == id);
-
-        if (order == null)
-            return NotFound();
-
-        await _cache.SetStringAsync(
-            cacheKey,
-            JsonSerializer.Serialize(order),
-            new DistributedCacheEntryOptions
+            var order = await _orderService.GetOrderByIdAsync(id);
+            if (order == null)
             {
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30)
+                Log.Warning("Order with ID {Id} not found", id);
+                return NotFound();
             }
-        );
 
-        return Ok(order);
-    }
+            return Ok(order);
+        }
 }
