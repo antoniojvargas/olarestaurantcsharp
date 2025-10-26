@@ -1,14 +1,14 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
+using System;
 
 namespace RestaurantApi.Models;
 
 public class OrderItem
 {
     [Key]
-    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public int Id { get; set; }
+    public Guid Id { get; set; } = Guid.NewGuid();
 
     [Required]
     public string Description { get; set; } = "";
@@ -20,7 +20,7 @@ public class OrderItem
     public decimal UnitPrice { get; set; }
 
     [ForeignKey("Order")]
-    public int OrderId { get; set; }
+    public Guid OrderId { get; set; }
 
     [JsonIgnore]
     public Order? Order { get; set; }

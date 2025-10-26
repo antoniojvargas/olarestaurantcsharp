@@ -21,7 +21,7 @@ namespace RestaurantApi.Services
             _logger = logger;
         }
 
-        public async Task<Order?> GetOrderByIdAsync(int id)
+        public async Task<Order?> GetOrderByIdAsync(Guid id)
         {
             var cacheKey = $"order:{id}";
 
@@ -102,7 +102,7 @@ namespace RestaurantApi.Services
         }
 
 
-        public async Task<Order?> AdvanceOrderStatusAsync(int id)
+        public async Task<Order?> AdvanceOrderStatusAsync(Guid id)
         {
             var order = await _context.Orders
                 .Include(o => o.Items)

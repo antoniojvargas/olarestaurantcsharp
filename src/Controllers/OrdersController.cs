@@ -53,7 +53,7 @@ public class OrdersController : ControllerBase
 
     // 3️⃣ Avanzar el estado de una orden
     [HttpPost("{id}/advance")]
-    public async Task<IActionResult> AdvanceOrder(int id)
+    public async Task<IActionResult> AdvanceOrder(Guid id)
     {
         Log.Information("POST /orders/{Id}/advance called", id);
 
@@ -69,17 +69,17 @@ public class OrdersController : ControllerBase
 
     // 4️⃣ Ver detalle de una orden
     [HttpGet("{id}")]
-        public async Task<IActionResult> GetOrderById(int id)
+    public async Task<IActionResult> GetOrderById(Guid id)
+    {
+        Log.Information("GET /orders/{Id} called", id);
+
+        var order = await _orderService.GetOrderByIdAsync(id);
+        if (order == null)
         {
-            Log.Information("GET /orders/{Id} called", id);
-
-            var order = await _orderService.GetOrderByIdAsync(id);
-            if (order == null)
-            {
-                Log.Warning("Order with ID {Id} not found", id);
-                return NotFound();
-            }
-
-            return Ok(order);
+            Log.Warning("Order with ID {Id} not found", id);
+            return NotFound();
         }
+
+        return Ok(order);
+    }
 }
